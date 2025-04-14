@@ -16,6 +16,7 @@ import { PreferencesContext } from './Popups/Settings'
 import { Entries } from './utils/Entries'
 import { fixedEncodeURIComponent, formatArgs, lookupUrl, parseArgs } from './utils/UrlParsing'
 import { useWindowDimensions } from './utils/WindowWidth'
+import MessageComposer from './MessageComposer'
 
 // CSS
 import './css/App.css'
@@ -35,6 +36,7 @@ function App() {
   const [loaded, setLoaded] = useState<boolean>(false)
   const [preferences, setPreferences] = useState<IPreferencesContext>(defaultSettings)
   const { width } = useWindowDimensions()
+  const [showChat, setShowChat] = useState<boolean>(false)
 
   // Lean4monaco options
   const [options, setOptions] = useState<LeanMonacoOptions>({
@@ -212,58 +214,6 @@ function App() {
           })
         }
 
-        // // TODO: This was an approach to create a new definition provider, but it
-        // // wasn't that useful. I'll leave it here in connection with the TODO below for
-        // // reference.
-        // monaco.languages.registerDefinitionProvider('lean4', {
-        //   provideDefinition(model, position) {
-        //     const word = model.getWordAtPosition(position);
-        //     if (word) {
-        //       console.log(`[Lean4web] Providing definition for: ${word.word}`);
-        //       // Return the location of the definition
-        //       return [
-        //         {
-        //           uri: model.uri,
-        //           range: {startLineNumber: 0, startColumn: word.startColumn, endColumn: word.endColumn, endLineNumber: 0}, // Replace with actual definition range
-        //         },
-        //       ];
-        //     }
-        //     return null;
-        //   },
-        // });
-
-        // TODO: Implement Go-To-Definition better
-        // This approach only gives us the file on the server (plus line number) it wants
-        // to open, is there a better approach?
-        const editorService = (leanMonacoEditor.editor as any)?._codeEditorService
-        if (editorService) {
-          const openEditorBase = editorService.openCodeEditor.bind(editorService)
-          editorService.openCodeEditor = async (input: any, source: any) => {
-              const result = await openEditorBase(input, source)
-              if (result === null) {
-                // found this out with `console.debug(input)`:
-                // `resource.path` is the file go-to-def tries to open on the disk
-                // we try to create a doc-gen link from that. Could not extract the
-                // (fully-qualified) decalaration name... with that one could
-                // call `...${path}.html#${declaration}`
-                let path = input.resource.path.replace(
-                  new RegExp("^.*/(?:lean|\.lake/packages/[^/]+/)"), ""
-                ).replace(
-                  new RegExp("\.lean$"), ""
-                )
-
-                if (window.confirm(`Do you want to open the docs?\n\n${path} (line ${input.options.selection.startLineNumber})`)) {
-                  let newTab = window.open(`https://leanprover-community.github.io/mathlib4_docs/${path}.html`, "_blank")
-                  if (newTab) {
-                    newTab.focus()
-                  }
-                }
-              }
-              return null
-              // return result // always return the base result
-          }
-        }
-
         // Keeping the `code` state up-to-date with the changes in the editor
         leanMonacoEditor.editor?.onDidChangeModelContent(() => {
           setCode(leanMonacoEditor.editor?.getModel()?.getValue()!)
@@ -333,25 +283,12 @@ function App() {
       // LZ padds the string with trailing `=`, which mess up the argument parsing
       // and aren't needed for LZ encoding, so we remove them.
       const compressed = LZString.compressToBase64(code).replace(/=*$/, '')
-      // // Note: probably temporary; might be worth to always compress as with whitespace encoding
-      // // it needs very little for the compressed version to be shorter
-      // const encodedCode = fixedEncodeURIComponent(code)
-      // console.debug(`[Lean4web] Code length: ${encodedCode.length}, compressed: ${compressed.length}`)
-      // if (compressed.length < encodedCode.length) {
-        args = {
-          project: _project,
-          url: null,
-          code: null,
-          codez: compressed
-        }
-      // } else {
-      //   args = {
-      //     project: _project,
-      //     url: null,
-      //     code: encodedCode,
-      //     codez: null
-      //   }
-      // }
+      args = {
+        project: _project,
+        url: null,
+        code: null,
+        codez: compressed
+      }
     } else {
       args = {
         project: _project,
@@ -376,6 +313,37 @@ function App() {
       document.removeEventListener("contextmenu", handleContextMenu, true)
     }
   }, [])
+
+  // Handle auto-formalization request
+  const handleFormalize = async (statement: string) => {
+    try {
+      // Example: make an API call to your auto-formalization service
+      console.log(`Formalizing statement: ${statement}`)
+      
+      // Mock API call - replace with actual implementation
+      // const response = await fetch('your-api-endpoint', {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({ statement }),
+      // });
+      // const data = await response.json();
+      
+      // For demonstration, let's just insert a simple formalized version
+      const formalizedCode = `-- Auto-formalized from: "${statement}"\n\ntheorem example : ∀ n : ℕ, n + 0 = n := by
+  intro n
+  rfl`
+      
+      // Append the formalized code to the editor
+      setContent(code + "\n\n" + formalizedCode)
+      
+      return true
+    } catch (error) {
+      console.error('Formalization error:', error)
+      return false
+    }
+  }
 
   return <PreferencesContext.Provider value={{preferences, setPreferences}}>
     <div className="app monaco-editor">
@@ -426,6 +394,37 @@ function App() {
               onChange={setContent} />
           }
           <div ref={editorRef} className={`codeview${codeMirror ? ' hidden' : ''}`} />
+          
+          {/* Message Composer */}
+          <MessageComposer 
+            onSubmit={async (statement) => {
+              try {
+                console.log(`Processing statement: ${statement}`)
+                
+                // Mock API call - replace with actual implementation
+                // const response = await fetch('your-api-endpoint', {
+                //   method: 'POST',
+                //   headers: {
+                //     'Content-Type': 'application/json',
+                //   },
+                //   body: JSON.stringify({ statement }),
+                // });
+                
+                // For demonstration, insert a simple formalized version
+                const formalizedCode = `-- Auto-formalized from: "${statement}"\n\ntheorem example : ∀ n : ℕ, n + 0 = n := by
+          intro n
+          rfl`
+                
+                // Append the formalized code to the editor
+                setContent(code + "\n\n" + formalizedCode)
+                
+                return true
+              } catch (error) {
+                console.error('Formalization error:', error)
+                return false
+              }
+            }}
+          />
         </div>
         <div ref={infoviewRef} className="vscode-light infoview"
           style={preferences.mobile ? {width : '100%'} : {height: '100%'}} >
@@ -438,7 +437,6 @@ function App() {
       </Split>
     </div>
   </PreferencesContext.Provider>
-
 }
 
 export default App
